@@ -5,3 +5,4 @@ build/
 dist/
 koboextractor.egg-info/
 docs/build/
+__pycache__

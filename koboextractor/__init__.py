@@ -477,7 +477,7 @@ class KoboExtractor:
                                 tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }']['label'] = choice_dict['label']
                                 tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }']['answer_code'] = (int) (choice_code in value.split())
                                 tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }']['answer_label'] = 'Yes' if choice_code in value.split() else 'No'
-                    elif questions[group_code]['questions'][question_code]['type'] == 'text' or questions[group_code]['questions'][question_code]['type'] == 'integer' or questions[group_code]['questions'][question_code]['type'] == '_or_other':
+                    else:
                         # no special treatment for simple types of questions
                         tmp_qns[group_code]['questions'][question_code]['answer_label'] = value
         return {
