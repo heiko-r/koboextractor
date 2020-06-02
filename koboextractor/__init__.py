@@ -237,12 +237,19 @@ class KoboExtractor:
         group_label = None
         sequence = 0
         for qn in asset['content']['survey']:
-            # qn['name'] is the question code
+            # qn['name'] or qn['$autoname'] is the question code
             # Assuming every question has a type (so far it has been true)
+            
+            if 'name' in qn:
+                name = qn['name']
+            elif '$autoname' in qn:
+                name = qn['$autoname']
+            else:
+                name = None
             
             # Adding new question groups
             if qn['type'] == 'begin_group':
-                group_code = qn['name']
+                group_code = name
                 if 'label' in qn:
                     group_label = qn['label'][0]
             if group_code not in qns:
@@ -251,19 +258,19 @@ class KoboExtractor:
                 qns[group_code]['questions'] = {}
             
             # Adding new questions to the current group
-            if 'name' in qn:
-                qns[group_code]['questions'][qn['name']] = {}
-                qns[group_code]['questions'][qn['name']]['type'] = qn['type']
-                qns[group_code]['questions'][qn['name']]['sequence'] = sequence
+            if name:
+                qns[group_code]['questions'][name] = {}
+                qns[group_code]['questions'][name]['type'] = qn['type']
+                qns[group_code]['questions'][name]['sequence'] = sequence
                 if 'label' in qn:
-                    qns[group_code]['questions'][qn['name']]['label'] = qn['label'][0]
+                    qns[group_code]['questions'][name]['label'] = qn['label'][0]
                 if 'select_from_list_name' in qn:
-                    qns[group_code]['questions'][qn['name']]['list_name'] = qn['select_from_list_name']
+                    qns[group_code]['questions'][name]['list_name'] = qn['select_from_list_name']
             elif qn['type'] == 'end_group':
                 group_code = None
                 group_label = None
             else:
-                raise Exception(f'Question without name, type: { qn["type"] }')
+                raise Exception(f'Question without name or $autoname, type: { qn["type"] }')
             
             if unpack_multiples and qn['type'] == 'select_multiple':
                 list_name = qn['select_from_list_name']
@@ -271,15 +278,15 @@ class KoboExtractor:
                                         key=lambda choice: choice[1]['sequence'])
                 for choice in sorted_choices:
                     sequence += 1
-                    qns[group_code]['questions'][f'{ qn["name"] }/{ choice[0] }'] = {}
-                    qns[group_code]['questions'][f'{ qn["name"] }/{ choice[0] }']['label'] = choice[1]['label']
-                    qns[group_code]['questions'][f'{ qn["name"] }/{ choice[0] }']['type'] = 'select_multiple_option'
-                    qns[group_code]['questions'][f'{ qn["name"] }/{ choice[0] }']['sequence'] = sequence
+                    qns[group_code]['questions'][f'{ name }/{ choice[0] }'] = {}
+                    qns[group_code]['questions'][f'{ name }/{ choice[0] }']['label'] = choice[1]['label']
+                    qns[group_code]['questions'][f'{ name }/{ choice[0] }']['type'] = 'select_multiple_option'
+                    qns[group_code]['questions'][f'{ name }/{ choice[0] }']['sequence'] = sequence
             if '_or_other' in qn and qn['_or_other']:
                 sequence += 1
-                qns[group_code]['questions'][f'{ qn["name"] }_other'] = {
+                qns[group_code]['questions'][f'{ name }_other'] = {
                     'type': '_or_other',
-                    'label': f'{ qn["name"] }_other',
+                    'label': f'{ name }_other',
                     'sequence': sequence
                 }
             
