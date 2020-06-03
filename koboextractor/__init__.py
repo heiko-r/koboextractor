@@ -256,7 +256,7 @@ class KoboExtractor:
             if group_code not in qns:
                 qns[group_code] = {}
                 qns[group_code]['label'] = group_label
-                if qn['type'] == 'repeat_group':
+                if qn['type'] == 'begin_repeat':
                     qns[group_code]['repeat'] = True
                 else:
                     qns[group_code]['repeat'] = False
