@@ -208,6 +208,7 @@ class KoboExtractor:
                 {
                     GROUP_CODE: {
                         'label': GROUP_LABEL,
+                        'repeat': True/False,
                         'questions': {
                             QUESTION_CODE: {
                                 'type': QUESTION_TYPE,
@@ -248,13 +249,17 @@ class KoboExtractor:
                 name = None
             
             # Adding new question groups
-            if qn['type'] == 'begin_group':
+            if qn['type'] == 'begin_group' or qn['type'] == 'begin_repeat':
                 group_code = name
                 if 'label' in qn:
                     group_label = qn['label'][0]
             if group_code not in qns:
                 qns[group_code] = {}
                 qns[group_code]['label'] = group_label
+                if qn['type'] == 'repeat_group':
+                    qns[group_code]['repeat'] = True
+                else:
+                    qns[group_code]['repeat'] = False
                 qns[group_code]['questions'] = {}
             
             # Adding new questions to the current group
@@ -266,7 +271,7 @@ class KoboExtractor:
                     qns[group_code]['questions'][name]['label'] = qn['label'][0]
                 if 'select_from_list_name' in qn:
                     qns[group_code]['questions'][name]['list_name'] = qn['select_from_list_name']
-            elif qn['type'] == 'end_group':
+            elif qn['type'] == 'end_group' or qn['type'] == 'end_repeat':
                 group_code = None
                 group_label = None
             else:
@@ -364,6 +369,11 @@ class KoboExtractor:
                 
                     {
                         'GROUP_CODE/QUESTION_CODE': 'ANSWER_CODE',
+                        'REPEAT_GROUP_CODE': [
+                            {
+                                'REPEAT_GROUP_CODE/QUESTION_CODE': 'ANSWER_CODE',
+                            }
+                        ],
                         'METADATA_KEY': 'METADATA_VALUE'
                     }
                 
@@ -403,6 +413,25 @@ class KoboExtractor:
                                 }
                             }
                         },
+                        REPEAT_GROUP_CODE: {
+                            'label': 'Group label',
+                            'repeats': {
+                                0: {
+                                    QUESTION_CODE: {
+                                        'label': 'Question label',
+                                        'answer_code': ANSWER_CODE,
+                                        'answer_label': 'Answer label',
+                                        'sequence': QUESTION_SEQUENCE
+                                    },
+                                    {
+                                        ...
+                                    }
+                                },
+                                1: {
+                                    ...
+                                }
+                            }
+                        },
                         ...
                     }
                 }
@@ -410,30 +439,69 @@ class KoboExtractor:
             QUESTION_SEQUENCE reflects the order of the questions (and
             choices) in the survey.
         """
+        def label_question(group_code, question_code, value, questions, choice_lists, unpack_multiples):
+            # Add and label the question
+            tmp_qn = {}
+            if not (question_code in questions[group_code]['questions'] and
+                    'label' in questions[group_code]['questions'][question_code]):
+                # Cannot label this question and answer
+                tmp_qn['label'] = question_code
+                tmp_qn['answer_code'] = value
+                tmp_qn['answer_label'] = value
+            else:
+                tmp_qn['sequence'] = questions[group_code]['questions'][question_code]['sequence']
+                tmp_qn['label'] = questions[group_code]['questions'][question_code]['label']
+                tmp_qn['answer_code'] = value
+                if questions[group_code]['questions'][question_code]['type'] == 'select_one':
+                    try:
+                        # get answer label from choice list
+                        list_name = questions[group_code]['questions'][question_code]['list_name']
+                        tmp_qn['answer_label'] = choice_lists[list_name][value]['label']
+                    except KeyError:
+                        # Cannot label this answer
+                        tmp_qn['answer_label'] = value
+                elif questions[group_code]['questions'][question_code]['type'] == 'select_multiple':
+                    list_name = questions[group_code]['questions'][question_code]['list_name']
+                    try:
+                        # get individual answer labels from choice list and
+                        # concatenate them into this question's answer label
+                        answer_label = ''
+                        for split_answer_code in value.split():
+                            answer_label = answer_label + choice_lists[list_name][split_answer_code]['label'] + ';'
+                        tmp_qn['answer_label'] = answer_label
+                    except KeyError:
+                        # Cannot label this answer
+                        tmp_qn['answer_label'] = value
+                    if unpack_multiples:
+                        # append additional 'questions' for the individual choices
+                        for choice_code, choice_dict in choice_lists[list_name].items():
+                            tmp_qn[f'{ question_code }/{ choice_code }'] = {}
+                            tmp_qn[f'{ question_code }/{ choice_code }']['sequence'] = questions[group_code]['questions'][f'{ question_code }/{ choice_code }']['sequence']
+                            tmp_qn[f'{ question_code }/{ choice_code }']['label'] = choice_dict['label']
+                            tmp_qn[f'{ question_code }/{ choice_code }']['answer_code'] = (int) (choice_code in value.split())
+                            tmp_qn[f'{ question_code }/{ choice_code }']['answer_label'] = 'Yes' if choice_code in value.split() else 'No'
+                else:
+                    # no special treatment for simple types of questions
+                    tmp_qn['answer_label'] = value
+            return tmp_qn
+        
+        meta_keys_start = ('_', 'meta/', 'formhub/')
+        
         tmp_meta = {}
         tmp_qns = {}
         for key, value in unlabeled_result.items():
-            # separate keys starting with '_', 'meta/', 'start', 'today', 'end',
-            # 'formhub/' into a 'meta' dict
-            if (key.startswith('_') or key.startswith('meta/') or
-                key.startswith('formhub/') or key == 'start' or key == 'end' or
-                key == 'today'):
-                tmp_meta[key] = value
-            else:
-                # all 'non-meta' items go into the 'questions' dict
-                # split the results key into GROUP_CODE/QUESTION_CODE
+            # there are various keys within an unlabeled_result dict, and not
+            # all of them belong to survey questions:
+            # key does not start with underscore, but contains '/' -> QUESTION_GROUP/QUESTION_TYPE
+            # key does not start with underscore, but points to a list -> REPEAT_GROUP_CODE
+            # any other case -> metadata
+            group_code = ''
+            question_code = ''
+            if not key.startswith(meta_keys_start) and '/' in key:
+                # regular question
                 splitkey = key.split('/')
-                group_code = ''
-                question_code = ''
-                if len(splitkey) != 2:
-                    # key is not of the form GROUP/QUESTION
-                    group_code = None
-                    question_code = key
-                else:
-                    # key is of the form GROUP/QUESTION
-                    group_code = splitkey[0]
-                    question_code = splitkey[1]
-                
+                group_code = splitkey[0]
+                question_code = splitkey[1]
                 # Add and label the group if not yet done
                 if group_code not in tmp_qns:
                     tmp_qns[group_code] = {}
@@ -443,50 +511,32 @@ class KoboExtractor:
                         tmp_qns[group_code]['label'] = group_code
                     else:
                         tmp_qns[group_code]['label'] = questions[group_code]['label']
-                
-                # Add and label the question
-                tmp_qns[group_code]['questions'][question_code] = {}
-                if not (question_code in questions[group_code]['questions'] and
-                        'label' in questions[group_code]['questions'][question_code]):
-                    # Cannot label this question and answer
-                    tmp_qns[group_code]['questions'][question_code]['label'] = question_code
-                    tmp_qns[group_code]['questions'][question_code]['answer_code'] = value
-                    tmp_qns[group_code]['questions'][question_code]['answer_label'] = value
+                tmp_qns[group_code]['questions'][question_code] = label_question(group_code, question_code, value, questions, choice_lists, unpack_multiples)
+            
+            elif not key.startswith(meta_keys_start) and isinstance(value, list):
+                # repeat group
+                group_code = key
+                # create repeat group and add label
+                tmp_qns[group_code] = {}
+                tmp_qns[group_code]['repeats'] = {}
+                if group_code not in questions:
+                    # Cannot label this group
+                    tmp_qns[group_code]['label'] = group_code
                 else:
-                    tmp_qns[group_code]['questions'][question_code]['sequence'] = questions[group_code]['questions'][question_code]['sequence']
-                    tmp_qns[group_code]['questions'][question_code]['label'] = questions[group_code]['questions'][question_code]['label']
-                    tmp_qns[group_code]['questions'][question_code]['answer_code'] = value
-                    if questions[group_code]['questions'][question_code]['type'] == 'select_one':
-                        try:
-                            # get answer label from choice list
-                            list_name = questions[group_code]['questions'][question_code]['list_name']
-                            tmp_qns[group_code]['questions'][question_code]['answer_label'] = choice_lists[list_name][value]['label']
-                        except KeyError:
-                            # Cannot label this answer
-                            tmp_qns[group_code]['questions'][question_code]['answer_label'] = value
-                    elif questions[group_code]['questions'][question_code]['type'] == 'select_multiple':
-                        list_name = questions[group_code]['questions'][question_code]['list_name']
-                        try:
-                            # get individual answer labels from choice list and
-                            # concatenate them into this question's answer label
-                            answer_label = ''
-                            for split_answer_code in value.split():
-                                answer_label = answer_label + choice_lists[list_name][split_answer_code]['label'] + ';'
-                            tmp_qns[group_code]['questions'][question_code]['answer_label'] = answer_label
-                        except KeyError:
-                            # Cannot label this answer
-                            tmp_qns[group_code]['questions'][question_code]['answer_label'] = value
-                        if unpack_multiples:
-                            # append additional 'questions' for the individual choices
-                            for choice_code, choice_dict in choice_lists[list_name].items():
-                                tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }'] = {}
-                                tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }']['sequence'] = questions[group_code]['questions'][f'{ question_code }/{ choice_code }']['sequence']
-                                tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }']['label'] = choice_dict['label']
-                                tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }']['answer_code'] = (int) (choice_code in value.split())
-                                tmp_qns[group_code]['questions'][f'{ question_code }/{ choice_code }']['answer_label'] = 'Yes' if choice_code in value.split() else 'No'
-                    else:
-                        # no special treatment for simple types of questions
-                        tmp_qns[group_code]['questions'][question_code]['answer_label'] = value
+                    tmp_qns[group_code]['label'] = questions[group_code]['label']
+                tmp_qns[group_code]['repeats'] = {}
+                i = 0
+                for repeat_set in value:
+                    tmp_qns[group_code]['repeats'][i] = {}
+                    for repeat_key, repeat_value in repeat_set.items():
+                        question_code = repeat_key.split('/')[1]
+                        tmp_qns[group_code]['repeats'][i][question_code] = {}
+                        tmp_qns[group_code]['repeats'][i][question_code] = label_question(group_code, question_code, repeat_value, questions, choice_lists, unpack_multiples)
+                    i += 1
+            
+            else:
+                # metadata
+                tmp_meta[key] = value
         return {
             'meta': tmp_meta,
             'questions': tmp_qns
