@@ -50,18 +50,42 @@ Information on the questions and choices in your survey can be obtained with:
 .. code-block:: python
 
 	{
-		GROUP_CODE: {
-			'label': GROUP_LABEL,
-			'questions': {
-				QUESTION_CODE: {
-					'type': QUESTION_TYPE,
-					'sequence': SEQUENCE_NUMBER,
-					'label': QUESTION_LABEL,
-					'list_name': CHOICE_LIST_NAME,
-				}
-			}
-		}
-	}
+        'groups': {
+            GROUP_CODE: {
+                'label': GROUP_LABEL,
+                'sequence': SEQUENCE_NUMBER,
+                'repeat': True/False,
+                'questions': {
+                    QUESTION_CODE: {
+                        'type': QUESTION_TYPE,
+                        'sequence': SEQUENCE_NUMBER,
+                        'label': QUESTION_LABEL,
+                        'list_name': CHOICE_LIST_NAME,
+                        'choices': {
+                            CHOICE_CODE: {
+                                'label': CHOICE_LABEL,
+                                'type': 'select_multiple_option',
+                                'sequence': SEQUENCE_NUMBER
+                            }
+                        },
+                        'other': {
+                            'type': '_or_other',
+                            'label': 'Other',
+                            'sequence': SEQUENCE_NUMBER
+                        }
+                    }
+                },
+                'groups': {
+                    GROUP_CODE: {
+                        ...
+                    }
+                }
+            },
+        'questions': {
+            QUESTION_CODE: {
+                ...
+            }
+    }
 
 ``choices`` is a dictionary of the form:
 
@@ -73,41 +97,6 @@ Information on the questions and choices in your survey can be obtained with:
 			'sequence': SEQUENCE_NUMBER
 		}
 	}
-
-One way to delete questions you're not interested in could be:
-
-.. code-block:: python
-
-	# Remove all questions without labels or of the following types
-	delete_types = ['start', 'end', 'today', 'begin_group', 'end_group', 'calculate']
-	for question_group, question_group_dict in questions.items():
-		# The [] part is building a list of question_codes where the question type is in the above delete list
-		for question_code in [question_code for question_code, question_dict in question_group_dict['questions'].items() if question_dict['type'] in delete_types]: del questions[question_group]['questions'][question_code]
-		for question_code in [question_code for question_code, question_dict in question_group_dict['questions'].items() if 'label' not in question_dict]: del questions[question_group]['questions'][question_code]
-	# delete empty question groups
-	for question_group in [question_group for question_group, question_group_dict in questions.items() if not question_group_dict['questions']]: del questions[question_group]
-
-If you need a list of questions in the order of their appearance in the survey,
-use:
-
-.. code-block:: python
-
-	# Put all questions from all groups into one list
-	all_questions = []
-	for question_group_code, question_group_dict in questions.items():
-		for question_code, question_dict in question_group_dict['questions'].items():
-			if 'label' in question_dict:
-				label = question_dict['label']
-			else:
-				label = question_code
-			all_questions.append({
-				'group_code': question_group_code,
-				'question_code': question_code,
-				'question_label': label,
-				'sequence': question_dict['sequence']
-			})
-	# Sort the questions by their order in the survey
-	sorted_questions = sorted(all_questions, key = lambda question: question['sequence'])
 
 Download all responses submitted after a certain point in time:
 

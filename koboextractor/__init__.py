@@ -243,10 +243,11 @@ class KoboExtractor:
                         }
                 }
             
-            where GROUP_LABEL and QUESTION_LABEL are the labels (text) of the
-            group or question in the survey's default language. SEQUENCE_NUMBER
-            is an incrementing number that can be used to restore the order of
-            the questions in the survey from this unordered dict.
+            where GROUP_LABEL, QUESTION_LABEL and CHOICE_LABEL are the labels
+            (text) of the group or question in the survey's default language.
+            SEQUENCE_NUMBER is an incrementing number that can be used to
+            restore the order of the questions in the survey from this
+            unordered dict.
             
             Depending on the question, not all keys may be present.
             
@@ -373,10 +374,10 @@ class KoboExtractor:
     def label_result(self,
                      unlabeled_result,  # type: Dict[str, Any]
                      choice_lists,      # type: Dict[str, Dict[str, str]]
-                     questions,         # type: Dict[str, Dict[str, str]]
+                     questions,         # type: Dict[str, Dict[str, Any]]
                      unpack_multiples,  # type: bool
                      ):
-        # type: (...) -> Dict[str, Dict[str, Any]]
+        # type: (...) -> Dict[str, Any]
         """Adds labels for questions and answers to a response.
         
         Adds labels corresponding the the question group codes, question codes
@@ -442,7 +443,15 @@ class KoboExtractor:
                             'label': 'Question label',
                             'answer_code': ANSWER_CODE,
                             'answer_label': 'Answer label',
-                            'sequence': QUESTION_SEQUENCE
+                            'sequence': QUESTION_SEQUENCE,
+                            'choices': {
+                                'CHOICE_CODE': {
+                                    'sequence': CHOICE_SEQUENCE,
+                                    'label': CHOICE_LABEL,
+                                    'answer_code': 0 or 1,
+                                    'answer_label': 'Yes' or 'No'
+                                }
+                            }
                         },
                         (GROUP_CODE(S)/)REPEAT_GROUP_CODE: {
                             0: {
@@ -465,7 +474,8 @@ class KoboExtractor:
                     }
                 }
             
-            QUESTION_SEQUENCE reflects the order of the questions (and
+            () denote optional parts, depending on how deep the groups are
+            nested. QUESTION_SEQUENCE reflects the order of the questions (and
             choices) in the survey.
         """
         def label_question(group_codes, question_code, value, questions, choice_lists, unpack_multiples):

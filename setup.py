@@ -7,7 +7,7 @@ with open(readmepath, "r") as fh:
 
 setuptools.setup(
     name="koboextractor",
-    version="0.1.4",
+    version="0.2.0",
     author="Heiko Rothkranz",
     description="Extract datasets from KoBoToolbox",
     long_description=long_description,
