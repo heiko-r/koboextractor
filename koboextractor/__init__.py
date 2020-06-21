@@ -176,8 +176,12 @@ class KoboExtractor:
         for choice in asset['content']['choices']:
             if choice['list_name'] not in choice_lists:
                 choice_lists[choice['list_name']] = {}
+            if 'label' in choice:
+                label = choice['label'][0]
+            else:
+                label = None
             choice_lists[choice['list_name']][choice['name']] = {
-                'label': choice['label'][0],
+                'label': label,
                 'sequence': sequence
             }
             sequence += 1
